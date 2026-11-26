@@ -1,39 +1,306 @@
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plant Moisture Monitor</title>
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #eef5ee;
-            text-align: center;
-            margin: 20px;
-        }
+<meta charset="UTF-8">
 
-        .container {
-            background: white;
-            max-width: 1000px;
-            margin: auto;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px #ccc;
-        }
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        h1 {
-            color: #287a42;
-        }
-    </style>
+<title>Plant Moisture Monitor</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body {
+    font-family: Arial, sans-serif;
+    background: #eef5ee;
+    text-align: center;
+    margin: 20px;
+}
+
+.container {
+    background: white;
+    max-width: 1000px;
+    margin: auto;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px #cccccc;
+}
+
+h1 {
+    color: #287a42;
+}
+
+.moisture {
+    font-size: 48px;
+    color: #287a42;
+    font-weight: bold;
+}
+
+.chart-container {
+    position: relative;
+    width: 100%;
+    height: 550px;
+    margin-top: 20px;
+}
+
+.status {
+    color: #555;
+    font-size: 14px;
+}
+
+@media (max-width: 600px) {
+
+    .chart-container {
+        height: 420px;
+    }
+
+    .container {
+        padding: 12px;
+    }
+
+}
+
+</style>
+
 </head>
 
 <body>
-    <div class="container">
-        <h1>Plant Moisture Monitor</h1>
-        <p>Welcome to my plant monitoring website!</p>
-        <p>Arduino connection coming soon...</p>
+
+<div class="container">
+
+    <h1>Plant Moisture Monitor</h1>
+
+    <p>Current soil moisture</p>
+
+    <div class="moisture" id="latest">
+        Loading...
     </div>
+
+    <h2>Moisture vs Time</h2>
+
+    <div class="chart-container">
+
+        <canvas id="moistureChart"></canvas>
+
+    </div>
+
+    <p class="status" id="status">
+        Connecting to Cloudflare...
+    </p>
+
+    <p class="status" id="count"></p>
+
+</div>
+
+<script>
+
+// ==================================
+// CLOUDFLARE CONNECTION
+// ==================================
+
+const API_URL =
+    'https://plant-moisture-api.bertiec123.workers.dev/data';
+
+// ==================================
+// CREATE GRAPH
+// ==================================
+
+const ctx = document.getElementById('moistureChart');
+
+let chart = null;
+
+function createChart() {
+
+    if (typeof Chart === 'undefined') {
+        return false;
+    }
+
+    chart = new Chart(ctx, {
+
+        type: 'line',
+
+        data: {
+
+            labels: [],
+
+            datasets: [{
+
+                label: 'Soil Moisture (%)',
+
+                data: [],
+
+                borderColor: '#299b59',
+
+                backgroundColor: 'rgba(41,155,89,0.15)',
+
+                fill: true,
+
+                tension: 0.3,
+
+                pointRadius: 4,
+
+                borderWidth: 3
+
+            }]
+
+        },
+
+        options: {
+
+            responsive: true,
+
+            maintainAspectRatio: false,
+
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+
+            scales: {
+
+                x: {
+
+                    title: {
+
+                        display: true,
+
+                        text: 'Elapsed time (hours)',
+
+                        font: {
+                            size: 15
+                        }
+
+                    }
+
+                },
+
+                y: {
+
+                    min: 0,
+
+                    max: 100,
+
+                    ticks: {
+                        stepSize: 5
+                    },
+
+                    title: {
+
+                        display: true,
+
+                        text: 'Soil moisture (%)',
+
+                        font: {
+                            size: 15
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    });
+
+    return true;
+}
+
+// ==================================
+// GET DATA FROM CLOUDFLARE
+// ==================================
+
+async function updateGraph() {
+
+    try {
+
+        if (!chart) {
+
+            if (!createChart()) {
+
+                document.getElementById('status').innerText =
+                    'Waiting for Chart.js. Check internet connection.';
+
+                return;
+            }
+
+        }
+
+        const response = await fetch(
+            API_URL + '?t=' + Date.now()
+        );
+
+        if (!response.ok) {
+            throw new Error('HTTP error ' + response.status);
+        }
+
+        const data = await response.json();
+
+        const points = data.points;
+
+        // Display elapsed time in hours.
+
+        chart.data.labels =
+            points.map(p => Number(p.t).toFixed(2));
+
+        chart.data.datasets[0].data =
+            points.map(p => p.m);
+
+        chart.update();
+
+        // Display latest moisture value.
+
+        if (points.length > 0) {
+
+            const latest =
+                points[points.length - 1].m;
+
+            document.getElementById('latest').innerText =
+                latest + '%';
+
+        } else {
+
+            document.getElementById('latest').innerText =
+                'No data';
+
+        }
+
+        document.getElementById('count').innerText =
+            points.length + ' stored measurements';
+
+        document.getElementById('status').innerText =
+            'Connected - Cloudflare data retrieved successfully';
+
+    }
+
+    catch(error) {
+
+        document.getElementById('status').innerText =
+            'Error retrieving data: ' + error.message;
+
+    }
+
+}
+
+// ==================================
+// AUTOMATIC UPDATES
+// ==================================
+
+// Update immediately.
+
+updateGraph();
+
+// Refresh every 10 minutes.
+
+setInterval(updateGraph, 600000);
+
+</script>
+
 </body>
+
 </html>
